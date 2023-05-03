@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import pandas as pd 
 import mne 
@@ -8,20 +9,20 @@ import environ, montages, config
 def _read_montage_from_text(path_to_montage):
 	montage = []
 	with open(path_to_montage) as f:
-	    lines = f.readlines()
+		lines = f.readlines()
 	lines = [l for l in lines if l[0] != "#"]
 	for l in lines:
-	    if "[Montage]" in l or l == "\n":
-	        continue
-	    else:
-	        _mon = l.split(": ")[1]
-	        if " -- " in _mon:
-	            e1 = _mon.split(" -- ")[0].strip()
-	            e2 = _mon.split(" -- ")[1].strip()
-	            montage.append((e1, e2))
-	        else:
-	            if "EEG EKG-LE" in _mon:
-	                montage.append(("EEG EKG-LE",))
+		if "[Montage]" in l or l == "\n":
+			continue
+		else:
+			_mon = l.split(": ")[1]
+			if " -- " in _mon:
+				e1 = _mon.split(" -- ")[0].strip()
+				e2 = _mon.split(" -- ")[1].strip()
+				montage.append((e1, e2))
+			else:
+				if "EEG EKG-LE" in _mon:
+					montage.append(("EEG EKG-LE",))
 	return montage
 
 
@@ -105,12 +106,21 @@ def window_and_label_data(X, y, win_size_secs, sfreq=256.0):
 	samps_per_win = int(win_size_secs * sfreq)
 	n_windows = int(math.floor(l / samps_per_win))
 
-	X_new = X[:,:int(n_windows*samps_per_win)].reshape(\
-		(n_windows, n_channels, samps_per_win))
-
-	y_windowed = y[:int(n_windows*win_size_secs)].reshape(
-		[n_windows, int(win_size_secs)])
+	# i don't think this was doing what i thought it was....
+	# X_new = X[:,:int(n_windows*samps_per_win)].reshape(\
+	# 	(n_windows, n_channels, samps_per_win))
+	X_new = []
+	for i in range(n_windows):
+		X_new.append(X[:, i*samps_per_win:(i+1)*samps_per_win])
+	X_new = np.array(X_new)
+	
+	y_windowed = []
+	for i in range(n_windows):
+		y_windowed.append(y[int(i*win_size_secs): int((i+1)*win_size_secs)])
+	# y_windowed = y[:int(n_windows*win_size_secs)].reshape(
+	# 	[n_windows, int(win_size_secs)])
 	y_new = np.array([np.sum(y_win) for y_win in y_windowed]).astype(int)
+
 	return X_new, y_new
 
 
@@ -141,8 +151,8 @@ def preprocess(eegpath, annpath, biannpath):
 
 	# resample
 	if raw_edf.info['sfreq'] != config.SFREQ:
-	    raw_edf = raw_edf.copy().resample(config.SFREQ)
-	    
+		raw_edf = raw_edf.copy().resample(config.SFREQ)
+		
 	# get some metadata, AFTER resampling
 	sfreq = raw_edf.info['sfreq']
 	duration_secs = raw_edf.get_data().shape[1] / sfreq
@@ -152,8 +162,8 @@ def preprocess(eegpath, annpath, biannpath):
 
 	# simplify labels
 	y = simplify_labels(duration_secs, 
-	                    df_ann,
-	                    df_biann)
+						df_ann,
+						df_biann)
 
 	# window data and labels
 	X, y = window_and_label_data(X, y, config.WIN_SIZE_SECS, config.SFREQ)
