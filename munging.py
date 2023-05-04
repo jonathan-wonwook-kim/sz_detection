@@ -86,6 +86,26 @@ def simplify_labels(recording_dur_secs, df_label, df_label_bin):
 		return y
 
 
+def _debug_plot(X_montaged, df_ann, X, y):
+	import matplotlib.pyplot as plt
+	import os
+	ch = 1
+	fig, axes = plt.subplots(4, sharex=True, figsize=(15,8))
+	axes[0].set_title("after montaging before windowing")
+	t = np.arange(X_montaged.shape[1]) / sfreq
+	axes[0].plot(t, X_montaged[ch])
+	for _, r in df_ann.iterrows():
+		if "sz" in r.label:
+			axes[1].axvspan(r.start_time, r.stop_time, alpha=0.2)
+	axes[2].set_title("after windowing")
+	for i in range(len(X)):
+		axes[2].plot(np.arange(i*640, (i+1)*640) / 64,
+					 X[i][ch])
+	axes[3].plot(np.arange(len(y))*10, y)
+	plt.savefig("./debug/%s.png" % (os.path.basename(annpath).split(".csv")[0]))
+	plt.close()
+
+
 def window_and_label_data(X, y, win_size_secs, sfreq=256.0):
 	"""
 	takes eeg readings X (hopefully filtered and montaged by this point) of 
@@ -106,19 +126,15 @@ def window_and_label_data(X, y, win_size_secs, sfreq=256.0):
 	samps_per_win = int(win_size_secs * sfreq)
 	n_windows = int(math.floor(l / samps_per_win))
 
-	# i don't think this was doing what i thought it was....
-	# X_new = X[:,:int(n_windows*samps_per_win)].reshape(\
-	# 	(n_windows, n_channels, samps_per_win))
 	X_new = []
 	for i in range(n_windows):
-		X_new.append(X[:, i*samps_per_win:(i+1)*samps_per_win])
+		X_new.append(X[:, i*samps_per_win : (i+1)*samps_per_win])
 	X_new = np.array(X_new)
 	
 	y_windowed = []
 	for i in range(n_windows):
-		y_windowed.append(y[int(i*win_size_secs): int((i+1)*win_size_secs)])
-	# y_windowed = y[:int(n_windows*win_size_secs)].reshape(
-	# 	[n_windows, int(win_size_secs)])
+		y_windowed.append(y[int(i*win_size_secs) : int((i+1)*win_size_secs)])
+
 	y_new = np.array([np.sum(y_win) for y_win in y_windowed]).astype(int)
 
 	return X_new, y_new
@@ -158,7 +174,7 @@ def preprocess(eegpath, annpath, biannpath):
 	duration_secs = raw_edf.get_data().shape[1] / sfreq
 
 	# montage
-	X, montage = prepare_montage(raw_edf)
+	X_montaged, montage = prepare_montage(raw_edf)
 
 	# simplify labels
 	y = simplify_labels(duration_secs, 
@@ -166,7 +182,7 @@ def preprocess(eegpath, annpath, biannpath):
 						df_biann)
 
 	# window data and labels
-	X, y = window_and_label_data(X, y, config.WIN_SIZE_SECS, config.SFREQ)
+	X, y = window_and_label_data(X_montaged, y, config.WIN_SIZE_SECS, config.SFREQ)
 	return X, y
 
 

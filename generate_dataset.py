@@ -39,8 +39,8 @@ def main(file_suffix, regen=False, sz_thresh=2.0):
 		with open(save_path_y, "rb") as f:
 			y_raw = np.load(f)
 	else:
-		if os.path.isdir(cache_path) and regen:
-			shutil.rmtree(cache_path)
+		# if os.path.isdir(cache_path) and regen:
+		# 	shutil.rmtree(cache_path)
 
 		eegpaths = glob.glob(os.path.join(PATH_TO_EEGS, "*/*/*/*.edf"))
 
@@ -94,11 +94,11 @@ def main(file_suffix, regen=False, sz_thresh=2.0):
 if __name__ == '__main__':
 	parser = OptionParser()
 	parser.add_option("-d", "--dataset", dest="dataset")
-	parser.add_option("-s", "--size", dest="size")
+	parser.add_option("-s", "--size", dest="size", default="")
 
 	options, _ = parser.parse_args()
 
-	file_suffix = "_%s_%s" % (options.dataset, options.size)
+	file_suffix = "_%s%s" % (options.dataset, options.size)
 
 	main(file_suffix, regen=True)
 
