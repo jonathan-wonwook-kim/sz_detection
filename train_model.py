@@ -28,70 +28,42 @@ from scipy.stats import zscore
 
 from torch.utils.data import Dataset
 
+from mmapdataset import MMAPDataset, Xy_iter, get_dataset_size
+
 def main(size, sz_thresh = 2.0):
-    save_path_X_trn = "./cache/X_trn%s.npy" % size
-    save_path_y_trn = "./cache/y_trn%s.npy" % size
-    save_path_X_dev = "./cache/X_dev%s.npy" % size
-    save_path_y_dev = "./cache/y_dev%s.npy" % size
+    # parameters that might change
+    device = "mps"
+    loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1, 19]).to(device))
+    batch_size = 64 
+    resample_training_data = False
+    epochs = 20
+
+    sig = nn.Sigmoid()
 
     #tensorboard stuff
     writer = SummaryWriter()
-
-    # load train set
-    with open(save_path_X_trn, "rb") as f:
-        X_trn = np.load(f)
-    with open(save_path_y_trn, "rb") as f:
-        y_raw_trn = np.load(f)
-
-    # y_bin = (y_raw_trn > sz_thresh).astype(int)
-    # num_pos_samples = np.sum(y_bin)
-    # num_neg_samples = len(y_bin) - num_pos_samples
-    # class_weights = [1 / num_neg_samples, 1 / num_pos_samples]
-    # sample_weights = np.array([class_weights[t] for t in y_bin])
-
-    # train_set = CustomDataset(X_trn, y_raw_trn, sz_thresh)
-    y_trn = munging.format_y_for_torcheeg(y_raw_trn)
-    train_set = NumpyDataset(X = X_trn,
-                             y = y_trn,
-                             io_path="./io/tuh_trn%s" % size,
-                             online_transform=transforms.Compose([
+    
+    print("loading train set...")
+    train_set = MMAPDataset(Xy_iter("X", "trn", "first_half"),
+                            Xy_iter("y", "trn", "first_half", sz_thresh),
+                            size=get_dataset_size(config.WINS_PER_CACHE_FILE, 
+                                "trn", "first_half"),
+                            transform_fn=transforms.Compose([
                                 transforms.MeanStdNormalize(axis=1),
                                 transforms.ToTensor()]),
-                             label_transform=transforms.Compose([
-                                 transforms.Select('sz_present'),
-                                 transforms.Binary(sz_thresh)]),
-                             num_worker=64)
-    del X_trn
-    del y_raw_trn
-    del y_trn
+                            num_windows_per_file=config.WINS_PER_CACHE_FILE)
+    print("...loaded train set.")
 
-    # load val set
-    with open(save_path_X_dev, "rb") as f:
-        X_dev = np.load(f)
-    with open(save_path_y_dev, "rb") as f:
-        y_raw_dev = np.load(f)
-
-    # val_set = CustomDataset(X_dev, y_raw_dev, sz_thresh)
-    y_dev = munging.format_y_for_torcheeg(y_raw_dev)
-    val_set = NumpyDataset(X = X_dev,
-                           y = y_dev,
-                           io_path="./io/tuh_dev%s" % size,
-                           online_transform=transforms.Compose([
+    print("loading val set...")
+    val_set = MMAPDataset(Xy_iter("X", "dev", "first_half"),
+                          Xy_iter("y", "dev", "first_half", sz_thresh),
+                            size=get_dataset_size(config.WINS_PER_CACHE_FILE,
+                                "dev", "first_half"),
+                            transform_fn=transforms.Compose([
                                 transforms.MeanStdNormalize(axis=1),
                                 transforms.ToTensor()]),
-                           label_transform=transforms.Compose([
-                               transforms.Select('sz_present'),
-                               transforms.Binary(sz_thresh)]),
-                           num_worker=64)
-    # import IPython; IPython.embed()
-    del X_dev
-    del y_raw_dev
-    del y_dev
-
-    device = "mps"
-    loss_fn = nn.BCEWithLogitsLoss()
-    batch_size = 64
-    sig = nn.Sigmoid()
+                            num_windows_per_file=config.WINS_PER_CACHE_FILE)
+    print("...loaded val set.")
 
     def train(dataloader, model, loss_fn, optimizer, epoch):
         size = len(dataloader.dataset)
@@ -109,7 +81,6 @@ def main(size, sz_thresh = 2.0):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-
             if batch_idx % 100 == 0:
                 loss, current = loss.item(), batch_idx * len(X)
                 pred_cpu = sig(pred)[:,1].cpu().detach().numpy()
@@ -124,7 +95,6 @@ def main(size, sz_thresh = 2.0):
                 n_iter = epoch * size / 6400 + batch_idx / 100
                 writer.add_scalar('Loss/train', loss, n_iter)
                 writer.add_scalar('AUROC/train', auroc, n_iter)
-
 
     def validate(dataloader, model, loss_fn, epoch):
         size = len(dataloader.dataset)
@@ -159,26 +129,27 @@ def main(size, sz_thresh = 2.0):
         writer.add_scalar('AUROC/val', auroc, epoch)
         # import IPython; IPython.embed()
 
-
     model = CNN(in_channels = 20)
-    # model = DeepCNNAcharya(in_channels=20)
     # print(summary(model, input_size=(64, 20, 640)))
     model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     class_weights = []
-    # sampler = WeightedRandomSampler(weights = sample_weights,
-    #                                 num_samples=int(num_pos_samples + num_neg_samples),
-    #                                 replacement=True)
-    train_loader = DataLoader(train_set, 
-                              # sampler = sampler,
-                              shuffle=True,
-                              batch_size = batch_size)
+    if resample_training_data:
+        sampler = WeightedRandomSampler(weights = sample_weights,
+                            num_samples=int(num_pos_samples + num_neg_samples),
+                            replacement=True)
+        train_loader = DataLoader(train_set, 
+                            sampler = sampler,
+                            batch_size = batch_size)
+    else:
+        train_loader = DataLoader(train_set, 
+                            shuffle=True, 
+                            batch_size=batch_size)
 
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
-    epochs = 20
     for t in range(epochs):
         print(f"Epoch {t+1}\n-------------------------------")
         train(train_loader, model, loss_fn, optimizer, epoch=t)
