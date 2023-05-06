@@ -33,10 +33,12 @@ from mmapdataset import MMAPDataset, Xy_iter, get_dataset_size
 def main(size, sz_thresh = 2.0):
     # parameters that might change
     device = "mps"
+
+    # train data is about 5% positive examples, hence weight is 1:19
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1, 19]).to(device))
     batch_size = 64 
     resample_training_data = False
-    epochs = 20
+    epochs = 50
 
     sig = nn.Sigmoid()
 
@@ -44,24 +46,32 @@ def main(size, sz_thresh = 2.0):
     writer = SummaryWriter()
     
     print("loading train set...")
-    train_set = MMAPDataset(Xy_iter("X", "trn", "first_half"),
-                            Xy_iter("y", "trn", "first_half", sz_thresh),
+    which_set = "trn"
+    train_set = MMAPDataset(Xy_iter("X", which_set, "first_half"),
+                            Xy_iter("y", which_set, "first_half", sz_thresh),
                             size=get_dataset_size(config.WINS_PER_CACHE_FILE, 
-                                "trn", "first_half"),
+                                which_set, "first_half"),
                             transform_fn=transforms.Compose([
                                 transforms.MeanStdNormalize(axis=1),
                                 transforms.ToTensor()]),
+                            mmap_path="./mmap",
+                            mmap_X_path="trn_X.data",
+                            mmap_y_path="trn_y.data",
                             num_windows_per_file=config.WINS_PER_CACHE_FILE)
     print("...loaded train set.")
 
     print("loading val set...")
-    val_set = MMAPDataset(Xy_iter("X", "dev", "first_half"),
-                          Xy_iter("y", "dev", "first_half", sz_thresh),
+    which_set = "dev"
+    val_set = MMAPDataset(Xy_iter("X", which_set, "first_half"),
+                          Xy_iter("y", which_set, "first_half", sz_thresh),
                             size=get_dataset_size(config.WINS_PER_CACHE_FILE,
-                                "dev", "first_half"),
+                                which_set, "first_half"),
                             transform_fn=transforms.Compose([
                                 transforms.MeanStdNormalize(axis=1),
                                 transforms.ToTensor()]),
+                            mmap_path="./mmap",
+                            mmap_X_path="val_X.data",
+                            mmap_y_path="val_y.data",
                             num_windows_per_file=config.WINS_PER_CACHE_FILE)
     print("...loaded val set.")
 
@@ -155,6 +165,8 @@ def main(size, sz_thresh = 2.0):
         train(train_loader, model, loss_fn, optimizer, epoch=t)
         validate(val_loader, model, loss_fn, epoch=t)
         print("Done!")
+
+    import IPython; IPython.embed()
 
 
 if __name__ == '__main__':

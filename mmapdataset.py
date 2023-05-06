@@ -48,6 +48,8 @@ class MMAPDataset(Dataset):
         input_iter: Iterable[np.ndarray],
         labels_iter: Iterable[np.ndarray],
         mmap_path: str = None,
+        mmap_X_path: str = None,
+        mmap_y_path: str = None,
         size: int = None,
         transform_fn: Callable[..., Any] = None,
         num_windows_per_file: int = None,
@@ -62,8 +64,8 @@ class MMAPDataset(Dataset):
             mmap_path = os.path.abspath(os.getcwd())
         self._mkdir(mmap_path)
 
-        self.mmap_input_path = os.path.join(mmap_path, DEFAULT_INPUT_FILE_NAME)
-        self.mmap_labels_path = os.path.join(mmap_path, DEFAULT_LABELS_FILE_NAME)
+        self.mmap_input_path = os.path.join(mmap_path, mmap_X_path)
+        self.mmap_labels_path = os.path.join(mmap_path, mmap_y_path)
 
         # get num of windows per cached 
         self.num_windows_per_file = num_windows_per_file

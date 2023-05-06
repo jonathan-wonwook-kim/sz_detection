@@ -29,6 +29,8 @@ def main(which_set, sub_set, wins_per_file=config.WINS_PER_CACHE_FILE,
 		PATH_TO_EEGS = environ.TUH_TRAIN_DATA_DIR
 	elif which_set == "dev":
 		PATH_TO_EEGS = environ.TUH_DEV_DATA_DIR
+	elif which_set == "eval":
+		PATH_TO_EEGS = environ.TUH_EVAL_DATA_DIR
 
 	subj_dirs = np.sort(glob.glob(os.path.join(PATH_TO_EEGS, "*")))
 	num_subjs = len(subj_dirs)
@@ -47,7 +49,7 @@ def main(which_set, sub_set, wins_per_file=config.WINS_PER_CACHE_FILE,
 	eegpaths = [item for sublist in eegpaths_by_subj for item in sublist]
 	stems = [Path(eegpath).stem for eegpath in eegpaths]
 
-	subset_eegpaths = np.sort(eegpaths) #[:4]
+	subset_eegpaths = np.sort(eegpaths)
 	subset_annpaths = []
 	subset_biannpaths = []
 	for f in subset_eegpaths:
@@ -57,9 +59,10 @@ def main(which_set, sub_set, wins_per_file=config.WINS_PER_CACHE_FILE,
 	batch_dx = 0
 	X_batch = []
 	y_batch = []
-	for eegpath, annpath, biannpath in tqdm.tqdm(zip(subset_eegpaths, 
-													 subset_annpaths, 
-													 subset_biannpaths),
+	for idx, (eegpath, annpath, biannpath) in tqdm.tqdm(enumerate(\
+													    zip(subset_eegpaths, 
+														    subset_annpaths, 
+														    subset_biannpaths)),
 												 total=len(subset_eegpaths)):
 		X_curr, y_raw_curr = munging.preprocess(eegpath, annpath, biannpath)
 		if X_curr.shape[0] > 0:
@@ -67,10 +70,10 @@ def main(which_set, sub_set, wins_per_file=config.WINS_PER_CACHE_FILE,
 			X_batch.append(X_curr)
 			y_batch.append(y_raw_curr)
 
-			if np.concatenate(X_batch).shape[0] > wins_per_file: 
-				X_cum = np.concatenate(X_batch)
-				y_cum = np.concatenate(y_batch)
+			X_cum = np.concatenate(X_batch)
+			y_cum = np.concatenate(y_batch)
 
+			if len(X_cum) >= wins_per_file: 
 				idx = 0
 				while idx < (len(X_cum) - wins_per_file):
 					ind_batch_st = idx
@@ -97,9 +100,35 @@ def main(which_set, sub_set, wins_per_file=config.WINS_PER_CACHE_FILE,
 
 				X_batch = [X_cum[idx:]]
 				y_batch = [y_cum[idx:]]
+
+	X_cum = np.concatenate(X_batch)
+	y_cum = np.concatenate(y_batch)
+
+	if len(X_cum) < wins_per_file: 
+		"""if you're at the end and you don't have enough windows to make
+		   a full file, that's ok! still save it. mmapdataset can handle
+		   it. 0 pad the last file, though, so mmapdataset doesn't complain
+		   about unevenly sized inputs."""
+		X_batch_save = np.zeros((wins_per_file, X_cum.shape[1], X_cum.shape[2]))
+		y_batch_save = np.zeros(wins_per_file)
+
+		X_batch_save[:len(X_cum)] = X_cum
+		y_batch_save[:len(y_cum)] = y_cum
+
+		save_path_X_curr = "./cache/preprocessed/%s/%s/batch_%d_X.npy" % \
+										(which_set, sub_set, batch_dx)
+		save_path_y_curr = "./cache/preprocessed/%s/%s/batch_%d_y.npy" % \
+										(which_set, sub_set, batch_dx)
+		with open(save_path_X_curr, "wb") as f:
+			np.save(f, X_batch_save)
+		with open(save_path_y_curr, "wb") as f:
+			np.save(f, y_batch_save)
+		print("last cache file contains %d windows" % len(X_cum))
+		batch_dx += 1
+
 	print("\nsaved %d batch(es)" % (batch_dx))
-	print("losing %d window(s)" % np.concatenate(X_batch).shape[0])
-	assert np.concatenate(X_batch).shape[0] < wins_per_file
+	
+	assert len(X_cum) < wins_per_file
 
 if __name__ == '__main__':
 	parser = OptionParser()
