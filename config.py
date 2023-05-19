@@ -1,4 +1,5 @@
 
+MODEL_NAME = "cnn_6"
 LF = 0.1
 HF = None
 SFREQ = 64

@@ -10,3 +10,4 @@ TUH_EVAL_DATA_DIR = os.path.join(TUH_DATA_DIR, "eval/")
 
 TUH_DOCS_DIR = os.path.join(BASE_DIR, "tuh/DOCS")
 
+EXCLUDE_CSV = os.path.join(BASE_DIR, "subjects_to_exclude.csv")

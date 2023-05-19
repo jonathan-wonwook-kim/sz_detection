@@ -28,32 +28,32 @@ from scipy.stats import zscore
 
 from torch.utils.data import Dataset
 
-def main(size, sz_thresh = 2.0):
-    save_path_X_trn = "./cache/X_trn%s.npy" % size
-    save_path_y_trn = "./cache/y_trn%s.npy" % size
-    save_path_X_dev = "./cache/X_dev%s.npy" % size
-    save_path_y_dev = "./cache/y_dev%s.npy" % size
+def main(subset, sz_thresh = 2.0):
+    save_path_X_trn = "./cache/X_trn_%s.npy" % subset
+    save_path_y_trn = "./cache/y_trn_%s.npy" % subset
+    save_path_X_dev = "./cache/X_dev_%s.npy" % subset
+    save_path_y_dev = "./cache/y_dev_%s.npy" % subset
 
     #tensorboard stuff
-    writer = SummaryWriter()
+    writer = SummaryWriter(log_dir="runs/" + config.MODEL_NAME)
 
     # load train set
     with open(save_path_X_trn, "rb") as f:
         X_trn = np.load(f)
     with open(save_path_y_trn, "rb") as f:
         y_raw_trn = np.load(f)
+    y_trn = munging.format_y_for_torcheeg(y_raw_trn)
 
     # y_bin = (y_raw_trn > sz_thresh).astype(int)
     # num_pos_samples = np.sum(y_bin)
     # num_neg_samples = len(y_bin) - num_pos_samples
     # class_weights = [1 / num_neg_samples, 1 / num_pos_samples]
     # sample_weights = np.array([class_weights[t] for t in y_bin])
-
     # train_set = CustomDataset(X_trn, y_raw_trn, sz_thresh)
-    y_trn = munging.format_y_for_torcheeg(y_raw_trn)
     train_set = NumpyDataset(X = X_trn,
                              y = y_trn,
-                             io_path="./io/tuh_trn%s" % size,
+                             io_mode="pickle",
+                             io_path="./io/tuh_trn_%s" % subset,
                              online_transform=transforms.Compose([
                                 transforms.MeanStdNormalize(axis=1),
                                 transforms.ToTensor()]),
@@ -75,7 +75,8 @@ def main(size, sz_thresh = 2.0):
     y_dev = munging.format_y_for_torcheeg(y_raw_dev)
     val_set = NumpyDataset(X = X_dev,
                            y = y_dev,
-                           io_path="./io/tuh_dev%s" % size,
+                           io_mode="pickle",
+                           io_path="./io/tuh_dev_%s" % subset,
                            online_transform=transforms.Compose([
                                 transforms.MeanStdNormalize(axis=1),
                                 transforms.ToTensor()]),
@@ -178,21 +179,25 @@ def main(size, sz_thresh = 2.0):
 
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
-    epochs = 20
+    epochs = 30
     for t in range(epochs):
         print(f"Epoch {t+1}\n-------------------------------")
         train(train_loader, model, loss_fn, optimizer, epoch=t)
         validate(val_loader, model, loss_fn, epoch=t)
         print("Done!")
+    if 1:
+        with open("cnn1.model", "wb") as f:
+            torch.save(model.state_dict(), f)
+    import IPython; IPython.embed()
 
 
 if __name__ == '__main__':
     parser = OptionParser()
-    parser.add_option("-s", "--size", dest="size", default="")
+    parser.add_option("-s", "--subset", dest="subset", default="")
 
     options, _ = parser.parse_args()
 
-    main(options.size)
+    main(options.subset)
 
 
 

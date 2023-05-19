@@ -106,7 +106,7 @@ def _debug_plot(X_montaged, df_ann, X, y):
 	plt.close()
 
 
-def window_and_label_data(X, y, win_size_secs, sfreq=256.0):
+def window_and_label_data(X, y=None, win_size_secs=10, sfreq=256.0):
 	"""
 	takes eeg readings X (hopefully filtered and montaged by this point) of 
 		varying length l (in samples), and splits into array of shape 
@@ -131,16 +131,19 @@ def window_and_label_data(X, y, win_size_secs, sfreq=256.0):
 		X_new.append(X[:, i*samps_per_win : (i+1)*samps_per_win])
 	X_new = np.array(X_new)
 	
-	y_windowed = []
-	for i in range(n_windows):
-		y_windowed.append(y[int(i*win_size_secs) : int((i+1)*win_size_secs)])
+	if y is not None:
+		y_windowed = []
+		for i in range(n_windows):
+			y_windowed.append(y[int(i*win_size_secs):int((i+1)*win_size_secs)])
 
-	y_new = np.array([np.sum(y_win) for y_win in y_windowed]).astype(int)
+		y_new = np.array([np.sum(y_win) for y_win in y_windowed]).astype(int)
+	else:
+		y_new = None
 
 	return X_new, y_new
 
 
-def preprocess(eegpath, annpath, biannpath):
+def preprocess(eegpath, annpath=None, biannpath=None):
 	"""
 	Taking the eeg, annotation, binary annotation files for a single set, 
 	turn them into a windowed X and y that can be concatenated together and 
@@ -158,9 +161,8 @@ def preprocess(eegpath, annpath, biannpath):
 			activity for the window found at index i
 	"""
 
+	# load
 	raw_edf = mne.io.read_raw_edf(eegpath, preload=True, verbose="ERROR")
-	df_ann = pd.read_csv(annpath, comment="#")
-	df_biann = pd.read_csv(biannpath, comment="#")
 
 	# filter
 	raw_edf.filter(config.LF, config.HF, fir_design='firwin', verbose='ERROR')
@@ -176,13 +178,22 @@ def preprocess(eegpath, annpath, biannpath):
 	# montage
 	X_montaged, montage = prepare_montage(raw_edf)
 
-	# simplify labels
-	y = simplify_labels(duration_secs, 
-						df_ann,
-						df_biann)
+	if annpath is not None and biannpath is not None:
+		df_ann = pd.read_csv(annpath, comment="#")
+		df_biann = pd.read_csv(biannpath, comment="#")
+
+		# simplify labels
+		y = simplify_labels(duration_secs, 
+							df_ann,
+							df_biann)
+	else:
+		y = None
 
 	# window data and labels
-	X, y = window_and_label_data(X_montaged, y, config.WIN_SIZE_SECS, config.SFREQ)
+	X, y = window_and_label_data(X_montaged, 
+								 y, 
+								 config.WIN_SIZE_SECS, 
+								 config.SFREQ)
 	return X, y
 
 
